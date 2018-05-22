@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace CodificandoServer
@@ -24,6 +25,7 @@ namespace CodificandoServer
     {
         private static readonly int MaxConnections = 10;
         private static readonly int Port = 8888;
+        public ManualResetEvent allDone = new ManualResetEvent(false);
 
 
         private Socket mainSocket;
@@ -37,12 +39,20 @@ namespace CodificandoServer
         {
             while (true)
             {
+                allDone.Reset();
+
                 mainSocket.BeginAccept(new AsyncCallback(this.AcceptCallback), mainSocket);
+
+                allDone.WaitOne();
             }
         }
 
         private void AcceptCallback(IAsyncResult ar)
         {
+            allDone.Set();
+
+            PrintInfo("Got a new connection");
+
             Socket listener = (Socket) ar.AsyncState;
             Socket handler = listener.EndAccept(ar);
 
@@ -57,8 +67,16 @@ namespace CodificandoServer
             StateObject state = (StateObject)ar.AsyncState;
             Socket handler = state.workSocket;
 
-            // Read data from the client socket.   
-            int bytesRead = handler.EndReceive(ar);
+            int bytesRead = 0;
+            try
+            {
+                // Read data from the client socket.   
+                bytesRead = handler.EndReceive(ar);
+            }
+            catch (Exception e)
+            {
+                PrintInfo(e.ToString());
+            }
 
             if (bytesRead > 0)
             {
@@ -121,7 +139,7 @@ namespace CodificandoServer
         private void StartListening()
         {
             mainSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            mainSocket.Bind(new IPEndPoint(IPAddress.Loopback, RequestHandler.Port));
+            mainSocket.Bind(new IPEndPoint(IPAddress.Any, RequestHandler.Port));
             mainSocket.Listen(RequestHandler.MaxConnections);
 
             PrintInfo(string.Format("Started listening on port {0}", RequestHandler.Port));
